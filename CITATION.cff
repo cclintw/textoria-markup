@@ -1,0 +1,14 @@
+cff-version: "1.2.0"
+message: "If you use this software, please cite it and record the release or commit used."
+type: software
+title: "Textoria Markup: A Codex Skill for Text Annotation"
+authors:
+  - family-names: "Lin"
+    given-names: "Chance Chun-Cheng"
+    website: "https://github.com/cclintw"
+license: GPL-3.0-or-later
+abstract: "A corpus-based annotation workflow using external vocabularies, keyword lists and reusable rules, with a static review interface and dialogue-driven corrections."
+keywords:
+  - "text annotation"
+  - "digital humanities"
+  - "Codex"
