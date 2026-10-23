@@ -16,11 +16,14 @@ The destination is the project's `.agents/skills/textoria-markup/`. Installing t
 
 ## Use
 
-1. Upload the source text (TXT, Markdown, HTML or CSV with a text column).
-2. Codex checks encoding automatically. Confirm the collection, archive the original in uploads/, then review the UTF-8 clean/<stem>_clean.md in the right-side editor. Edit Markdown headings or describe the structure in dialogue; confirm the preview before corpus.json is created.
-3. Supply entity tables, one-column keyword files or prose instructions. Codex normalizes unfamiliar input into validated JSON; it does not reread the entire text to discover entities.
-4. Confirm scope. The program applies literal/context/regex matches directly. New-source type conflicts are preserved; existing formal vocabulary and corrections have priority.
-5. Review the generated reader. Select text and use **+**, or use entity/paragraph copy icons, then paste into Codex and request an addition, change or deletion. Confirm the action/scope before mutation.
+1. Upload the source text (TXT, Markdown, HTML/HTM or CSV with a named text column). Other formats, such as PDFs and images, need appropriate conversion and review first. Uploading a file or discussing the tool alone does not start annotation.
+2. Codex inspects encoding and readability, then resolves collection ownership before saving files. It archives an unchanged copy in `uploads/` and provides a clickable link to the editable UTF-8 `clean/<stem>_clean.md`, with a preparation report. The file opens in a panel or browser only when requested. Consequential cleanup requires confirmation; edited working copies are preserved. Cleaning-only requests stop here without creating a corpus or website.
+3. For structure creation, edit Markdown headings (`# 卷一`, `## 城內`, `### 永寧寺`, with a space after `#`) or describe the structure in dialogue. Codex rereads the latest working copy and previews headings, order and paragraph segmentation. Confirm the preview before `corpus.json` and stable IDs are created. Review the actual saved hierarchy again before annotation; every structural revision needs a fresh preview.
+4. Supply entity tables, one-column keyword files or prose instructions, optionally combined with explicitly requested AI extraction through the separate extractor skill. Codex normalizes unfamiliar input into validated JSON and combines new sources before matching; it does not perform its own second entity-extraction pass. New-source type and explicit identity conflicts are preserved; existing formal vocabulary and corrections have priority.
+5. Confirm the action and scope. An explicit instruction that already names both provides authorization. The program applies literal/context/regex matches, then regenerates the reader and formal vocabulary.
+6. Review the generated reader. Select unannotated text and use **+**, or use entity/paragraph copy icons, then paste into Codex and request an addition, change or deletion. These controls only copy context; they do not save or send messages. Confirm the action and occurrence/paragraph/chapter/book scope before mutation; a single selection does not imply a global change.
+
+Appending a document to an existing corpus is not implemented. Do not rebuild or replace an existing corpus from raw sources to add text or revise annotations. See the [workflow and stage boundaries](.agents/skills/textoria-markup/references/workflow.md) for the current limitations.
 
 Example requests:
 
@@ -39,7 +42,7 @@ Vocabulary uploads, rules and optional Textoria Entity Extractor results can be 
 ```text
 <PROJECT>/
 ├── .agents/skills/textoria-markup/     # instructions, Python and shared theme
-└── textoria-markup/collections/collection-<slug>/
+└── textoria-markup/collections/collection-<ASCII-slug>/
     ├── uploads/                       # original sources and attachments
     ├── clean/<stem>_clean.md           # editable UTF-8 preparation, with report
     ├── corpus.json                    # authoritative master after structure confirmation
@@ -51,15 +54,36 @@ Vocabulary uploads, rules and optional Textoria Entity Extractor results can be 
 
 Shared Jinja templates and template parts live in the skill's `themes/default/`. CSS/JS are copied from its static assets. Chapter text, entity information and whole-book KWIC are generated from corpus. The reader can be opened as a local file or served over loopback. The browser is a review/copy interface; it never writes corpus itself. Guide navigation opens in the same tab and restores reader state on return.
 
+`corpus.json` is the authoritative master. After it is created, editing the clean Markdown does not automatically update saved text or annotations. Structure creation and unannotated reader rebuilds do not create `exports/`; formal entity JSON/CSV is generated after annotation inputs or edits, including accepted terms with zero matches, or on an explicit export request. JSON preserves complete reusable vocabulary and identity links; CSV provides one row per alias and type with IDs and scopes. Deletions retain entity records and scoped exclusions so reruns do not restore removed tags.
+
 ## Capabilities and boundaries
 
 - Literal vocabularies, aliases/scopes, multiple source types, independent same-span keywords.
 - Paragraph-local between/regex rules, stable rule IDs, regex time limits.
 - Revision-checked occurrence/paragraph/chapter/book edits, shared entity name/alias changes, new types, rule edits and confirmed undo.
-- Regenerated reader, counts/KWIC, entity JSON/CSV, standalone annotated HTML with embedded CSS, TEI XML. HTML, CSV/Excel and DocuXML icons follow + and copy export requests to paste into Codex.
+- Regenerated reader, counts/KWIC and formal entity JSON/CSV. The three public document exports are standalone HTML, CSV/Excel metadata tables and DocuXML.
 - Partially overlapping ranges are reported rather than silently overwritten; arbitrary nested/crossing markup is not rendered.
-- DocuXML uses one top-level division per document with all descendant paragraphs and matching metadata rows; full structure/provenance is retained in custom metadata. Actual DocuSky import should be checked with its validator. Single-file HTML embeds both sidebars, chapter navigation and in-file KWIC locating, omitting top editing/export actions.
-- No autonomous AI entity extraction, SNA/co-occurrence analysis, hosted deployment or plugin installation.
+- Empty chapters retain their heading and display the path to their first readable descendant, preserving paragraph ownership and IDs. Chapter navigation reflects the actual hierarchy.
+- If reader generation fails after a valid corpus save, the master is saved but the view is stale; rebuild before reporting the webpage as updated.
+- No autonomous AI entity extraction, SNA/co-occurrence analysis, translation or semantic extraction. Hosting is available only through an explicit Sites publishing request, as described below; no Codex plugin is bundled.
+
+## Exports
+
+HTML, CSV/Excel and DocuXML icons follow **+** in that order. They copy requests to paste into Codex; exports run on an explicit request and are saved under `exports/`:
+
+- `<collection title>.html`: self-contained reader with both sidebars, hierarchical chapter navigation and in-file KWIC locating. CSS, JS and all text data are embedded; top add/export/help actions are removed.
+- `<collection title>_metadata.csv` / `.xlsx`: editable DocuSky metadata, one row per top-level division, with filenames matching DocuXML records. These tables contain metadata rather than full text or BatchTagging instructions.
+- `<collection title>_docu.xml`: DocuXML 1.3, one top-level division per document with all descendant paragraphs and current annotations. Custom metadata retains the full division hierarchy and annotation provenance. Local checks cover text, structure and lexical compatibility; actual DocuSky compatibility still requires its validator/import results.
+
+CSV/Excel table export uses an available bundled spreadsheet runtime, resolved only when needed and never silently installed. HTML and DocuXML do not require that runtime. Existing TEI outputs are legacy; TEI, EPUB, SQLite and Access are not offered in the current export menu. See the [export reference](.agents/skills/textoria-markup/references/exports.md).
+
+## Sites publishing
+
+The globe icon after DocuXML copies a collection-specific publishing request. Clicking it alone does not authorize publication. Submit an explicit request to publish through the available Sites skill/tools. New Sites default to private; updates preserve an identified existing Site's audience and identity.
+
+Publishing uses the latest standalone reader as the static index, including the full text and annotations. It excludes uploads, clean files, the corpus master, history and unrelated files. Showcase HTML retains the top icons as copy-only commands and includes the complete help as a separate page in the same tab. Entity categories start collapsed on initial load and chapter changes; returning from help can restore reading state. These controls do not grant editing rights.
+
+Publication is a snapshot and does not automatically synchronize later corpus changes. Codex returns the verified deployed URL. If Sites is unavailable, it provides the local standalone reader instead of switching hosting platforms.
 
 ## Development
 
