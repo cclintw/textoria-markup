@@ -1,0 +1,20 @@
+import fs from 'node:fs/promises';
+import {Workbook,SpreadsheetFile} from '@oai/artifact-tool';
+const [input,output,preview]=process.argv.slice(2);
+const payload=JSON.parse(await fs.readFile(input,'utf8'));
+const workbook=Workbook.create();const sheet=workbook.worksheets.add('metadata');
+const matrix=[payload.columns,...payload.rows.map(r=>payload.columns.map(c=>r[c]??''))];
+const values=matrix.map(row=>row.map(value=>typeof value==='string'&&value.startsWith('=')?"'"+value:value));
+const range=sheet.getRangeByIndexes(0,0,values.length,payload.columns.length);range.values=values;range.setNumberFormat('@');
+range.format.font={name:'Arial',size:11};range.format.rowHeight=24;range.format.columnWidth=26;range.format.verticalAlignment='center';
+const header=sheet.getRangeByIndexes(0,0,1,payload.columns.length);header.format.fill='#334155';header.format.font={name:'Arial',size:11,color:'#FFFFFF',bold:true};header.format.rowHeight=30;
+sheet.getRangeByIndexes(0,0,values.length,1).format.columnWidth=54;
+sheet.getRangeByIndexes(0,3,values.length,1).format.columnWidth=42;
+sheet.showGridLines=false;sheet.freezePanes.freezeRows(1);
+workbook.recalculate();
+const actual=range.values;
+if(actual.length!==matrix.length)throw new Error('Workbook record count mismatch');
+for(let r=0;r<matrix.length;r++)for(let c=0;c<matrix[r].length;c++)if(String(actual[r][c]??'')!==String(matrix[r][c]??''))throw new Error(`Workbook changed cell ${r},${c}`);
+await workbook.inspect({kind:'region',sheetId:sheet.name,range:'A1:D7',maxChars:1200,tableMaxRows:7,tableMaxCols:4});
+if(preview){const image=await workbook.render({sheetName:sheet.name,range:'A1:D7',scale:1,format:'png'});await fs.writeFile(preview,new Uint8Array(await image.arrayBuffer()));}
+await (await SpreadsheetFile.exportXlsx(workbook)).save(output);

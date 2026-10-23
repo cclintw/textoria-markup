@@ -1,0 +1,11 @@
+    <div class="reader">
+    <article id="{{ current_division.division_id }}">
+      <h2>{{ current_division.title }}</h2>
+      <div id="annotationText" contenteditable="false">{{ paragraph_html | safe }}{% for section in reader_descendants %}
+        <article id="{{ section.division.division_id }}">
+          <h2>{{ section.division.title }}</h2>
+          {{ section.paragraph_html | safe }}
+        </article>{% endfor %}</div>
+    </article>
+    <nav class="chapter-navigation" aria-label="前後章節">{{ chapter_nav_html | safe }}</nav>
+  </div>

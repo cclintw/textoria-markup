@@ -1,0 +1,1 @@
+{"entities":[{"name":"金陵","types":["place"]}],"keywords":["功名"],"rules":[{"id":"rule-001","kind":"between","before":"名曰","after":"，","min_length":2,"max_length":6,"type":"person"}]}

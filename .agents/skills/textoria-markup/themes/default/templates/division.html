@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="layout">
+  {% include "parts/sidebar-left.html" %}
+  <main>
+    {% include "parts/chapter-selector.html" %}
+    {% include "parts/text-content.html" %}</main>
+  {% include "parts/sidebar-right.html" %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script id="annotationPage" type="application/json">{{ annotation_page | tojson }}</script>
+<script src="{{ site_prefix }}data/workbench.js?v={{ asset_version }}"></script>
+<script src="{{ asset_prefix }}js/reader-occurrences.js?v={{ asset_version }}"></script>
+<script src="{{ asset_prefix }}js/reader-data.js?v={{ asset_version }}"></script>
+<script src="{{ asset_prefix }}js/reference-reader.js?v={{ asset_version }}"></script>
+<script src="{{ asset_prefix }}js/reader-adapter.js?v={{ asset_version }}"></script>
+{% endblock %}

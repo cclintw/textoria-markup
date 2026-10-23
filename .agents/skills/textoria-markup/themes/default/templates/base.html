@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }}</title>
+  <meta name="description" content="{{ description }}">
+  <link rel="stylesheet" href="{{ asset_prefix }}css/reference.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="{{ asset_prefix }}css/reader-adapter.css?v={{ asset_version }}">
+</head>
+<body>
+{% include "parts/header.html" %}
+{% block body %}{% endblock %}
+{% include "parts/footer.html" %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

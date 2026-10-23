@@ -1,0 +1,3 @@
+interface:
+  display_name: "Textoria Markup"
+  short_description: "Annotate texts with external vocabularies and rules"
