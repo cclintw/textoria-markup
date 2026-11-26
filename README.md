@@ -1,6 +1,6 @@
 # Textoria Markup
 
-[繁體中文](readme_zh-TW.md) · [Codex Skill](.agents/skills/textoria-markup/SKILL.md) · [GNU GPL v3 or later](LICENSE)
+[Codex Skill](.agents/skills/textoria-markup/SKILL.md) · [GNU GPL v3 or later](LICENSE)
 
 Textoria Markup is a text annotation tool for Codex. Provide an entity vocabulary, keyword list, or annotation rules to create an annotated reader with chapter navigation, entity information, and keyword context. You can continue refining the annotations through chat.
 
