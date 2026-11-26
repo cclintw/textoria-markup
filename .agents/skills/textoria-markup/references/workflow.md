@@ -49,6 +49,8 @@ Name lists use literal matching, not generated regex. Rules are paragraph-local.
 
 CSV recognizes name/type/alias and 名稱/類型/別名; unfamiliar columns are interpreted by Codex. UTF-8 TXT/MD keyword files need one literal term per nonempty line, no header or special filename. Other encodings are converted after inspection. Uploaded binary tables/PDFs are not blindly parsed as text; Codex must read and normalize them first with the source preserved.
 
+Preserve supplied record references and coordinates in normalized entity input. JSON accepts `source_refs` and `location`. CSV accepts these fields as JSON cells or flat `source`, `source_id`, `url`, `latitude`, and `longitude` columns. Local NER reference set JSON preserves record identifiers, source references, and locations. For an unresolved reference, use `status: candidate` and keep its coordinates on that reference.
+
 Changes to stored rules must use `update-rule` and a confirmed request; an upload with a colliding, changed rule ID is rejected. A rerun may add new matches but won't erase previous tags. Read revisions again after every operation.
 
 For multiple newly provided sources, including optional extractor output, normalize and combine them in one batch before matching. Do not sequentially apply each new table as if the first were an already reviewed formal vocabulary; that would incorrectly suppress conflicts from later inputs. Keep provenance for all source files.

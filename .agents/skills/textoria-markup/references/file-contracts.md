@@ -8,7 +8,11 @@ The existing structural schema_version `2.0` is preserved for migration compatib
 
 Regex/between rules have stable IDs and explicit scopes; they are validated and interpreted, never executed as Python. Each source has an archived upload hash and normalized-data hash. Do not persist a permanent normalized-import JSON beside the corpus. Temporary import JSON may be discarded after verified commit.
 
-Create exports/ after annotation inputs/edits or an explicit export request, not at structure creation. Default profile types alone are not exported. Formal `exports/entity.json` preserves full terms, types, rules, exclusions and overrides for round-trip use. CSV has `id,name,type,alias,occurrences,match_policy,scope`: one row per original alias and type. It is for inspection/exchange; use JSON for lossless round-trip. Export all accepted terms including terms with zero current occurrences. Never let a derived export become a competing master while corpus exists.
+Create exports/ after annotation inputs/edits or an explicit export request, not at structure creation. The text-specific `exports/entity.json` uses schema `textoria-markup-reference-1` and contains vocabulary terms, type definitions, entity and name tables, relations, and rules. CSV includes `id,name,type,alias,occurrences,match_policy,scope,source_refs,location,name_kind,name_status`, with one row per name form and type. Export accepted terms including terms with zero confirmed occurrences. The corpus remains the authoritative source.
+
+Each term and exported entity includes `source_refs` and `location`. Use an empty array for missing references and `null` for a missing confirmed location. A reference contains `source`, `source_id`, `url`, `status`, and `location`. The status is `linked` or `candidate`. A location contains `latitude`, `longitude`, `source`, and `source_id`. Candidate coordinates stay with the candidate reference. Existing CBDB person evidence can provide an official record link when it identifies one linked person.
+
+The reader displays sources for people and places. For a place with coordinates, omit references without coordinates and show one representative per map position, preferring a reference with a record URL at that position. Show a dropdown only when two or more distinct map positions are available. If no coordinates are available, show direct links for references with valid record URLs. The map opens at the confirmed location when available or at the first available position. Switching locations updates the preview without changing the saved record. Leaflet maps use the HTTP or HTTPS reader.
 
 A regex match and a clipper result can add scoped vocabulary aliases. Reruns don't reinterpret saved/manual spans. New same-span entities are grouped preserving all source types/explicit identities; partial overlaps are recorded, not silently overwritten. The reader does not currently visualize general nested or crossing ranges.
 
@@ -20,15 +24,15 @@ A regex match and a clipper result can add scoped vocabulary aliases. Reruns don
 
 Name IDs derive deterministically from the owning entity ID, exact spelling, scope and match policy. Source evidence/receipts and scope are retained; no evidence is invented. The same spelling can belong to different entity IDs. When several forms match one occurrence, prefer the most specific applicable scope. Canonical labels belong to the entity; raw mention spellings stay in the original content nodes. An annotation's source range counts Unicode code points in the saved paragraph content, including any literal formatting syntax; the reader's source mapping preserves those offsets.
 
-`exports/entity.json` keeps the vocabulary-v1 `terms/types/rules/exclusions/overrides` fields for round-trip import and adds these derived, database-oriented tables under identity schema 1.0:
+`exports/entity.json` contains these reusable tables:
 
 - `entities`: `entity_id`, `canonical_name`, `markup_ids`, `sources`.
 - `names`: `name_id`, owning `entity_id`, exact `text`, `name_kind`, `match_policy`, `scope`, `sources`, and any supplied evidence metadata. It includes canonical spellings, not just aliases.
-- `mentions`: stable `mention_id` (the annotation ID), document/division/paragraph IDs, Unicode `[start,end)` offsets, `surface`, `markup_ids`, `identity_status`, and resolved `entity_id/name_id` when unambiguous.
-- `mention_links`: foreign keys `mention_id/entity_id/name_id`, with `relation` equal to `resolved` or `alternative`. Ambiguous mentions have null resolved IDs and multiple alternative links. Unlinked legacy annotations remain explicitly unlinked.
+- `relations`: `subject_id`, `type`, and `object_id`, with evidence when supplied.
+- `rules`: validated matching rules, with a target `term_id` when the rule links a form to an existing entity.
 
-These tables are derived views, never a second editable master inside the corpus. Full paragraph text and structure remain in `corpus.json`; importing relational tables into a database with document/paragraph foreign keys also requires those corpus tables. This change does not implement a database connector or generate a database file. Type/identity alternatives and independent keyword memberships remain intact.
+Full paragraph text, per-occurrence annotations, offsets, exclusions and overrides remain in `corpus.json`. Ambiguous mentions retain alternative IDs in the corpus. The reader displays them for review and counts confirmed identities by entity ID.
 
-Formal JSON re-import validates the relational views and foreign keys, then imports the formal vocabulary and correction rules. Source-document mentions are not silently recreated as annotations in a different document. CSV remains the existing simplified vocabulary exchange format and cannot carry the full relationship model; old JSON clients that reject additional fields need updating.
+Formal JSON re-import validates the entity and name projections against the formal terms. Legacy vocabulary-v1 exports remain importable. CSV provides a flat name listing.
 
-HTML keeps existing compatibility attributes and adds `data-entity-id`, `data-mention-id`, `data-name-id`, `data-name-kind`, and `data-identity-status`. `data-name-id` links canonical names as well as aliases; the name record states its kind. For ambiguous identities, `data-entity-id` is only the primary display candidate, not a resolved assertion; use the status and alternative references, or the relational JSON. HTML is a presentation; no downstream export should guess an alias relation from visible text alone.
+HTML exposes `data-entity-id`, `data-mention-id`, `data-name-id`, `data-name-kind`, and `data-identity-status`. For ambiguous identities, `data-entity-id` identifies the primary display candidate. Read the status and alternatives for the complete identity information.

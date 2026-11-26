@@ -6,7 +6,7 @@ from textoria_annotation import scope_matches
 
 def validate_rule(rule):
     if not isinstance(rule,dict) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_.-]*',str(rule.get('id',''))):raise ValueError('Rule needs a stable ID.')
-    allowed={'id','kind','before','after','include_boundaries','min_length','max_length','cross_paragraph','stop_chars','exclude','type','scope','pattern','group','flags','enabled','description'}
+    allowed={'id','kind','before','after','include_boundaries','min_length','max_length','cross_paragraph','stop_chars','exclude','type','term_id','scope','pattern','group','flags','enabled','description'}
     if set(rule)-allowed:raise ValueError('Unsupported rule conditions: '+', '.join(sorted(set(rule)-allowed)))
     if 'enabled' in rule and not isinstance(rule['enabled'],bool):raise ValueError('Rule enabled must be boolean.')
     if not isinstance(rule.get('flags',''),str):raise ValueError('Regex flags must be a string.')
@@ -36,6 +36,8 @@ def validate_rule(rule):
         if not isinstance(values,list) or not values or any(not isinstance(v,str) or not v for v in values):raise ValueError('Scope needs ID lists.')
     if not isinstance(rule.get('exclude',[]),list) or any(not isinstance(v,str) for v in rule.get('exclude',[])):raise ValueError('exclude needs literal strings.')
     if not isinstance(rule.get('type'),str) or not rule['type']:raise ValueError('Rule needs a target type.')
+    if 'term_id' in rule and (not isinstance(rule['term_id'],str) or not rule['term_id']):
+        raise ValueError('Rule term_id must be a nonempty string.')
     return rule
 
 

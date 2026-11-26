@@ -105,7 +105,6 @@ function renderDetail(item, count) {
     ['生卒', formatLife(item)],
     ['職官拼音', item.office_pinyin],
     ['職官譯名', item.office_translation],
-    ['座標', formatCoords(item)],
     ['說明', item.note],
   ].filter(([, value]) => value !== undefined && value !== null && value !== '');
   const sourceUrl = item.source_url
@@ -133,61 +132,70 @@ function formatLife(item) {
   return `${item.birth_year || '?'}-${item.death_year || '?'}`;
 }
 
-function formatCoords(item) {
-  const x = Number(item.x_coord);
-  const y = Number(item.y_coord);
-  if (!Number.isFinite(x) || !Number.isFinite(y) || (x === 0 && y === 0)) return '';
-  return `${y}, ${x}`;
+let leafletAssets;
+function loadLeaflet() {
+  if (!leafletAssets) {
+    const base = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet';
+    const assets = [document.createElement('link'), document.createElement('script')];
+    const [style, script] = assets;
+    style.rel = 'stylesheet';
+    style.href = base + '.css';
+    style.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+    script.src = base + '.js';
+    script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
+    leafletAssets = Promise.all(assets.map(asset => new Promise((resolve, reject) => {
+      asset.crossOrigin = 'anonymous';
+      asset.onload = resolve;
+      asset.onerror = reject;
+      document.head.append(asset);
+    }))).catch(error => {
+      assets.forEach(asset => asset.remove());
+      leafletAssets = null;
+      throw error;
+    });
+  }
+  return leafletAssets;
 }
 
-function renderMap(item) {
+async function renderMap(item) {
   const section = document.getElementById('mapSection');
-  const message = document.getElementById('mapMessage');
   const mapEl = document.getElementById('map');
-  const x = Number(item.x_coord);
-  const y = Number(item.y_coord);
-  if (!Number.isFinite(x) || !Number.isFinite(y) || (x === 0 && y === 0)) {
-    if (item.entity_type === 'place') {
-      section.hidden = false;
-      mapEl.hidden = true;
-      message.hidden = false;
-      message.textContent = '此 CBDB 地名記錄未提供可用 GIS 座標，因此不顯示地圖。';
-    } else {
-      section.hidden = true;
-    }
+  const {latitude: lat, longitude: lng, source, source_id: sourceId} = item?.location || {};
+  activeMapPoint = null;
+  section.hidden = true;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+  // File URLs cannot send the HTTP referrer required by the OSM tile service.
+  if (!['https:', 'http:'].includes(window.location.protocol)) return;
+  const point = {lat, lng};
+  activeMapPoint = point;
+  try {
+    await loadLeaflet();
+  } catch {
     return;
   }
+  if (activeMapPoint !== point) return;
   section.hidden = false;
-  mapEl.hidden = false;
-  message.hidden = true;
-  activeMapPoint = {lat: y, lng: x, label: item.canonical_name, sourceId: item.source_id || ''};
-  setTimeout(() => {
-    if (!window.L) {
-      message.hidden = false;
-      message.textContent = 'Leaflet 尚未載入。若以本機檔案開啟，請確認瀏覽器可連線到 Leaflet CDN 與 OpenStreetMap tile server。';
-      return;
-    }
-    if (!map) {
-      map = L.map('map', {scrollWheelZoom: false});
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 18,
-        attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(map);
-    }
-    map.setView([y, x], 8, {animate: true});
-    if (marker) marker.remove();
-    marker = L.marker([y, x]).addTo(map).bindPopup(`${esc(item.canonical_name)}<br>CBDB:${esc(item.source_id || '')}`);
-    marker.openPopup();
-    refreshMapView();
-    setTimeout(refreshMapView, 260);
-  }, 80);
+  if (!map) {
+    map = L.map(mapEl, {scrollWheelZoom: false});
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+    new ResizeObserver(refreshMapView).observe(mapEl);
+  }
+  map.setView([lat, lng], 8, {animate: false});
+  if (marker) marker.remove();
+  const popup = document.createElement('div');
+  popup.textContent = item.canonical_name;
+  const label = [source, sourceId].filter(Boolean).join(' · ');
+  if (label) popup.append(document.createElement('br'), label);
+  marker = L.marker([lat, lng]).addTo(map).bindPopup(popup);
+  refreshMapView();
 }
 
 function refreshMapView() {
-  if (!map || !activeMapPoint) return;
-  const point = [activeMapPoint.lat, activeMapPoint.lng];
+  if (!map || !activeMapPoint || !map.getContainer().getBoundingClientRect().width) return;
   map.invalidateSize({pan: false});
-  map.setView(point, map.getZoom() || 8, {animate: false});
   if (marker) marker.openPopup();
 }
 

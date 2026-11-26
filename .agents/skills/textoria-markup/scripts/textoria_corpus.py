@@ -198,15 +198,21 @@ def load_snapshot(root):
 def load_corpus(root):return load_snapshot(root)[0]
 
 
-def save_corpus(root,payload,expected_revision=None):
+def save_corpus(root,payload,expected_revision=None,*,expected_reference_revision=...):
     import gzip
     from textoria_common import corpus_lock
     root=Path(root);root.mkdir(parents=True,exist_ok=True)
     with corpus_lock(root):
         current=corpus_revision(root)
         if expected_revision!=current:raise ValueError('Corpus changed; reload before writing.')
+        if expected_reference_revision is not ...:
+            from textoria_reference_tables import reference_revision
+            if reference_revision(root)!=expected_reference_revision:
+                raise ValueError('工作詞表在標註期間有變更，請重新讀取後套用。')
         from textoria_identity import synchronize_names
+        from textoria_entity_sources import synchronize_entity_metadata
         synchronize_names(payload)
+        synchronize_entity_metadata(payload)
         payload['counts']=validate_payload(payload)
         payload['storage_format']='textoria-markup-single-corpus-v1'
         payload['generated_at']=now_iso()

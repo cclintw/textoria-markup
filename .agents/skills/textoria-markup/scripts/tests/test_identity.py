@@ -36,6 +36,12 @@ class Identity(unittest.TestCase):
     def test_alias_identity_offsets_html_and_database_foreign_keys(self):
         out = self.apply([{'name':'吳三桂','types':['person'],'aliases':['三桂']},
                           {'name':'福州','types':['place'],'aliases':['榕城']}])
+        for key in ('mentions','mention_links','exclusions','overrides'):
+            self.assertNotIn(key,out)
+        self.assertIn('relations',out)
+        from textoria_identity import relational_export
+        corpus, _ = load_snapshot(self.root)
+        out.update(relational_export(corpus))
         self.assertTrue(validate_relational_export(out))
         person = next(r for r in out['entities'] if r['canonical_name']=='吳三桂')
         matches = [r for r in out['mentions'] if r['surface'] in ('三桂','吳三桂')]
@@ -43,7 +49,6 @@ class Identity(unittest.TestCase):
         self.assertEqual({r['entity_id'] for r in matches}, {person['entity_id']})
         names = {r['name_id']: r for r in out['names']}
         self.assertEqual({names[r['name_id']]['name_kind'] for r in matches}, {'canonical','alias'})
-        corpus, _ = load_snapshot(self.root)
         paragraphs = {p['paragraph_id']: ''.join(n['text'] for n in p['content']) for p in corpus['paragraphs']}
         for m in out['mentions']:
             self.assertEqual(paragraphs[m['paragraph_id']][m['start']:m['end']], m['surface'])
@@ -71,12 +76,17 @@ class Identity(unittest.TestCase):
     def test_ambiguous_names_never_export_one_resolved_person(self):
         out=self.apply([{'id':'person-a','name':'甲某','types':['person'],'aliases':['某人']},
                         {'id':'person-b','name':'乙某','types':['person'],'aliases':['某人']}])
+        from textoria_identity import relational_export
+        from textoria_annotation_statistics import overview
+        corpus,_=load_snapshot(self.root)
+        out.update(relational_export(corpus))
         self.assertTrue(validate_relational_export(out))
         mention=next(r for r in out['mentions'] if r['surface']=='某人')
         self.assertEqual(mention['identity_status'],'ambiguous')
         self.assertIsNone(mention['entity_id']);self.assertIsNone(mention['name_id'])
         links=[r for r in out['mention_links'] if r['mention_id']==mention['mention_id']]
         self.assertEqual({r['entity_id'] for r in links},{'person-a','person-b'})
+        self.assertTrue(all(t['occurrences']==0 for t in overview(corpus)['terms']))
 
     def test_legacy_migration_is_additive_and_idempotent(self):
         self.apply([{'name':'吳三桂','types':['person'],'aliases':['三桂']}])

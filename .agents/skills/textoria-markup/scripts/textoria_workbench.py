@@ -60,6 +60,11 @@ def edit(root,request,*,rebuild_outputs=True):
     if request.get('confirmed') is not True:raise ValueError('Ask the user to confirm the operation and scope before editing.')
     data,rev=load_snapshot(root)
     if request.get('revision')!=rev:raise ValueError('Corpus changed; reload and confirm the affected targets.')
+    from textoria_reference_tables import compile_reference, project_tables, read_working_tables
+    tables,reference_rev=read_working_tables(root)
+    if tables is not None and reference_rev!=data.get('annotation_state',{}).get('reference_input_revision'):
+        if compile_reference(data,tables)!=compile_reference(data,project_tables(data)):
+            raise ValueError('工作詞表有尚未套用的修改，請先套用 CSV 再從對話修訂。')
     allowed={'operation','scope','revision','confirmed','paragraph_id','annotation_id','annotation_ids','term_id','start','end','text','markup_id','new_term_id','canonical_name','attributes','note','label','aliases','rule'}
     if set(request)-allowed:raise ValueError('Unknown edit fields; original text is locked.')
     before={p['paragraph_id']:content_text(p['content']) for p in data['paragraphs']}
@@ -191,7 +196,8 @@ def edit(root,request,*,rebuild_outputs=True):
             p['content']=pack_content(text,spans)
     else:raise ValueError('Unknown operation.')
     if before!={p['paragraph_id']:content_text(p['content']) for p in data['paragraphs']}:raise ValueError('Original text cannot change during annotation edits.')
-    save_corpus(root,data,rev)
+    data.setdefault('annotation_state',{})['reference_input_revision']=reference_rev
+    save_corpus(root,data,rev,expected_reference_revision=reference_rev)
     if not rebuild_outputs:
         return {'changed':changed,'revision':revision(root),'site_rebuilt':False}
     from textoria_rebuild import rebuild

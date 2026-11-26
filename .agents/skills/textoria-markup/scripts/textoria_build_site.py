@@ -315,7 +315,7 @@ def build_static_site(paths: BuildPaths, data: dict, reader_paragraphs=None) -> 
     # Whole-book KWIC is a derived data asset, never shipped as a template.
     from textoria_annotation import iter_annotations
     from textoria_corpus import content_text
-    records={}
+    records={};pending={}
     for p in data['paragraphs']:
         text=content_text(p['content']);offset=0
         for n in p['content']:
@@ -325,10 +325,10 @@ def build_static_site(paths: BuildPaths, data: dict, reader_paragraphs=None) -> 
                     before=re.sub(r'<span class="note">|</span>','',text[:offset])
                     after=re.sub(r'<span class="note">|</span>','',text[end:])
                     row=[ann['id'],p['paragraph_id'],p['division_id'],p['paragraph_index'],('…' if len(before)>12 else '')+before[-12:],hit,after[:12]+('…' if len(after)>12 else ''),ann.get('conflict_note','')]
-                    for tid in {ann.get('term_id'),*(x['term_id'] for x in ann.get('term_alternatives',[]))}:
-                        if tid:records.setdefault(tid,[]).append(row)
+                    if ann.get('term_alternatives'):pending[ann['id']]=row
+                    elif ann.get('term_id'):records.setdefault(ann['term_id'],[]).append(row)
             offset=end
-    value={'chapters':{d['division_id']:d['title'] for d in data['divisions']},'terms':records}
+    value={'chapters':{d['division_id']:d['title'] for d in data['divisions']},'terms':records,'pending':pending}
     encoded=json.dumps(value,ensure_ascii=False,separators=(',',':')).replace('<','\\u003c')
     (paths.site/'assets/js/reader-occurrences.js').write_text('window.TEXTORIA_OCCURRENCES='+encoded+';\n',encoding='utf-8')
     render_home(env,paths,data);render_read_entry(env,paths,data);render_division_pages(env,paths,data)

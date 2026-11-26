@@ -12,11 +12,45 @@ def normalize_type(value):
     return names.get(value.strip(),value.strip())
 
 
+def read_reference_set(data):
+    reference_id = data['id']
+    source = 'CBDB' if reference_id == 'cbdb' else data['name']
+    entities, ids = [], {}
+    for original in data['entities']:
+        item = dict(original)
+        source_id = item['id']
+        term_id = f'{reference_id}-{source_id.replace(":", "-")}'
+        if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_.-]*', term_id):
+            term_id = 'reference-' + hashlib.sha256(f'{reference_id}:{source_id}'.encode()).hexdigest()[:24]
+        item['id'] = term_id
+        item.setdefault('source', source)
+        item.setdefault('source_id', source_id)
+        entities.append(item)
+        ids[source_id] = term_id
+    relations = [{**row,'subject_id':ids[row['subject_id']],'object_id':ids[row['object_id']]}
+                 for row in data['relations']]
+    result = {'entities':entities,'relations':relations}
+    if isinstance(data.get('rules'),list):result['rules']=data['rules']
+    return result
+
+
 def read_upload(path,kind='auto'):
     path=Path(path)
     if path.suffix.lower()=='.json':
         data=json.loads(path.read_text(encoding='utf-8-sig'))
         if not isinstance(data,dict):raise ValueError('Normalized upload must be a JSON object.')
+        if data.get('schema_version')==1 and {'id','name','entities','relations'}<=data.keys():
+            return read_reference_set(data)
+        if data.get('schema_version')=='textoria-markup-reference-1':
+            from textoria_identity import relational_export
+            from textoria_reference_tables import project_tables
+            model={'vocabulary':{'terms':data['terms']},'paragraphs':[]}
+            expected=project_tables(model)
+            if any(data.get(key)!=expected[key] for key in ('entities','names')):
+                expected=relational_export(model)
+            for key in ('entities','names'):
+                if data.pop(key,None)!=expected[key]:
+                    raise ValueError('Reference table disagrees with formal vocabulary: '+key)
         if data.get('schema_version')=='textoria-markup-vocabulary-1' and 'identity_schema_version' in data:
             # Relational tables describe the source document. Import the formal
             # vocabulary, not source occurrences or a second set of entities.
@@ -40,9 +74,20 @@ def read_upload(path,kind='auto'):
                 if not (row.get(name) or '').strip():continue
                 item={'name':row[name].strip(),'types':[normalize_type(x) for x in re.split(r'[|;/；]',row[typ] or '') if x.strip()],
                       'aliases':[x.strip() for x in re.split(r'[|;；]',row.get(alias,'') or '') if x.strip()]}
-                if row.get('id'):item['id']=row['id']
-                if row.get('scope'):item['scope']=json.loads(row['scope'])
-                if row.get('match_policy'):item['match_policy']=row['match_policy']
+                for key in ('id','match_policy','source','source_id','url','source_url','latitude','longitude','x_coord','y_coord'):
+                    if row.get(columns.get(key)):item[key]=row[columns[key]]
+                for key in ('scope','source_refs','location'):
+                    if row.get(columns.get(key)):item[key]=json.loads(row[columns[key]])
+                kind_value=row.get(columns.get('name_kind'))
+                status=row.get(columns.get('name_status'))
+                if kind_value or status:
+                    forms=[]
+                    for value in item['aliases']:
+                        form={'text':value,'match_policy':item.get('match_policy','exact'),'scope':item.get('scope',{})}
+                        if kind_value:form['name_kind']=kind_value
+                        if status:form['evidence']={'identity_status':status}
+                        forms.append(form)
+                    item['aliases']=forms
                 entities.append(item)
             return {'entities':entities}
     if kind=='keywords' and path.suffix.lower() in {'.txt','.md'}:
@@ -52,9 +97,9 @@ def read_upload(path,kind='auto'):
 
 def prepare_upload(root,source,normalized=None,kind='auto'):
     source=Path(source).resolve();data=read_upload(normalized or source,kind)
-    allowed={'entities','keywords','rules','terms','types','exclusions','overrides','schema_version','collection_id'}
+    allowed={'entities','keywords','rules','terms','types','exclusions','overrides','relations','schema_version','collection_id'}
     if set(data)-allowed:raise ValueError('Unknown normalized upload fields: '+', '.join(sorted(set(data)-allowed)))
-    for key in ['entities','keywords','rules','terms','types','exclusions','overrides']:
+    for key in ['entities','keywords','rules','terms','types','exclusions','overrides','relations']:
         if key in data and not isinstance(data[key],list):raise ValueError(key+' must be a list.')
     folder=Path(root)/'uploads';folder.mkdir(parents=True,exist_ok=True)
     checksum=file_hash(source);target=folder/source.name

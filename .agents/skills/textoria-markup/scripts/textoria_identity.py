@@ -2,6 +2,7 @@
 import copy
 import hashlib
 import json
+from textoria_entity_sources import entity_metadata
 
 NAME_KINDS = {'canonical', 'alias', 'courtesy_name', 'sobriquet', 'alternative',
               'abbreviation', 'variant', 'contextual_form', 'unspecified'}
@@ -83,7 +84,7 @@ def relational_export(data):
     for tid, term in terms.items():
         entities.append({'entity_id': tid, 'canonical_name': term['canonical_name'],
                          'markup_ids': term.get('markup_ids', [term['markup_id']]),
-                         'sources': copy.deepcopy(term.get('sources', []))})
+                         'sources': copy.deepcopy(term.get('sources', [])), **entity_metadata(term)})
         for alias in term['aliases']:
             row = {**copy.deepcopy(alias), 'entity_id': tid}
             old = names.get(row['name_id'])
@@ -123,6 +124,10 @@ def validate_relational_export(payload):
     if payload.get('identity_schema_version') != '1.0':
         raise ValueError('Unsupported exported identity schema')
     expected = relational_export({'vocabulary': {'terms': payload['terms']}, 'paragraphs': []})
+    for supplied, derived in zip(payload.get('entities', []), expected['entities']):
+        if not {'source_refs', 'location'} & supplied.keys():
+            derived.pop('source_refs')
+            derived.pop('location')
     for key in ('entities', 'names'):
         if payload.get(key) != expected[key]:
             raise ValueError('Relational export disagrees with formal vocabulary: ' + key)

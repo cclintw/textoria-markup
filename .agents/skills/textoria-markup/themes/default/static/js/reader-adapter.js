@@ -29,14 +29,6 @@
   const expanded=new Set();
   let selectedId=prefs.selectedId||null;
   function savePrefs(){try{sessionStorage.setItem(storageKey,JSON.stringify({expanded:[...expanded],selectedId,leftCollapsed:document.body.classList.contains('left-collapsed'),rightCollapsed:document.body.classList.contains('right-collapsed')}));}catch{}}
-  const chapterCounts=new Map();
-  for(const p of READER_PAGE.paragraphs)for(const n of p.content){
-    if(!n.annotation)continue;
-    for(const ann of [n.annotation,...(n.annotation.keyword_annotations||[])]){
-      const ids=new Set([ann.term_id,...(ann.term_alternatives||[]).map(a=>a.term_id)].filter(Boolean));
-      for(const id of ids)chapterCounts.set(id,(chapterCounts.get(id)||0)+1);
-    }
-  }
   function renderEntityTree(){
     const tree=document.getElementById('entityTree');tree.replaceChildren();
     const q=document.getElementById('entityFilter').value.trim();
@@ -174,15 +166,137 @@
       if(link){const url=new URL(link.href);url.hash='';url.searchParams.set('mention',aid);url.searchParams.set('term',item.authority_id);location.assign(url.href);}return;
     }
   }
+  function sourceCell(table, label) {
+    const row = table.insertRow();
+    const heading = document.createElement('th');
+    heading.scope = 'row';
+    heading.textContent = label;
+    row.append(heading);
+    const cell = row.insertCell();
+    cell.className = 'detail-text';
+    return cell;
+  }
+  function sourceLabel(ref) {
+    return [ref.source, ref.source_id].filter(Boolean).join(' · ');
+  }
+  function sourceLink(ref, label) {
+    let url;
+    try {
+      if (ref.url) url = new URL(ref.url);
+    } catch {
+      return null;
+    }
+    if (!url || !['https:', 'http:'].includes(url.protocol)) return null;
+    const link = document.createElement('a');
+    link.href = url.href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = label || url.hostname;
+    return link;
+  }
+  function nearbyCandidate(a, b) {
+    // Group markers up to roughly 20 m apart for display.
+    const lngScale = Math.cos((a.latitude + b.latitude) * Math.PI / 360);
+    return Math.hypot(a.latitude - b.latitude, (a.longitude - b.longitude) * lngScale) <= 0.00018;
+  }
+  function appendPlacePicker(table, item, places) {
+    const cell = sourceCell(table, '來源位置');
+    const picker = document.createElement('select');
+    picker.className = 'place-candidate-select';
+    picker.setAttribute('aria-label', '地名來源候選');
+    const recordLink = document.createElement('div');
+    recordLink.className = 'place-candidate-link';
+    cell.append(picker, recordLink);
+
+    places.forEach((ref, index) => {
+      const option = document.createElement('option');
+      option.value = String(index);
+      option.textContent = sourceLabel(ref) || `位置 ${index + 1}`;
+      picker.append(option);
+    });
+    function showSelected() {
+      const ref = places[picker.selectedIndex];
+      const link = sourceLink(ref, '開啟來源紀錄');
+      recordLink.replaceChildren(...(link ? [link] : []));
+      recordLink.hidden = !link;
+      renderMap({...item, location: ref.location});
+    }
+    picker.addEventListener('change', showSelected);
+    showSelected();
+  }
+  function appendSource(table, ref, content) {
+    if (content) sourceCell(table, ref.status === 'candidate' ? '來源候選' : '來源').append(content);
+  }
+  function renderPlaceSources(table, item, refs, confirmed) {
+    const groups = [];
+    if (confirmed) {
+      const linked = refs.find(ref => ref.status !== 'candidate' && ref.source_id &&
+        ref.source === confirmed.source && ref.source_id === confirmed.source_id);
+      groups.push({point: confirmed, ref: {source: confirmed.source, source_id: confirmed.source_id,
+        ...linked, location: confirmed}});
+    }
+    for (const ref of refs) {
+      if (!ref.location) continue;
+      const group = groups.find(group => nearbyCandidate(group.point, ref.location));
+      if (!group) groups.push({point: ref.location, ref});
+      else if (!group.ref.url && ref.url) group.ref = ref;
+    }
+    const places = groups.map(group => group.ref);
+    if (places.length > 1) {
+      appendPlacePicker(table, item, places);
+      return;
+    }
+    if (places.length === 1) {
+      const ref = places[0];
+      const label = sourceLabel(ref);
+      appendSource(table, ref, sourceLink(ref, label) || label);
+      renderMap({...item, location: ref.location});
+      return;
+    }
+    const urls = new Set();
+    for (const ref of refs) {
+      const link = sourceLink(ref, sourceLabel(ref));
+      if (!link || urls.has(link.href)) continue;
+      urls.add(link.href);
+      appendSource(table, ref, link);
+    }
+    renderMap(null);
+  }
+  function renderSourcesAndMap(table, item, ann) {
+    const refs = item.source_refs || [];
+    if (item.entity_type === 'place') {
+      renderPlaceSources(table, item, refs, ann?.term_alternatives?.length ? null : item.location);
+      return;
+    }
+    if (item.entity_type === 'person') {
+      for (const ref of refs) {
+        const label = sourceLabel(ref);
+        appendSource(table, ref, sourceLink(ref, label) || label);
+      }
+    }
+    renderMap(null);
+  }
   renderDetail = (item,count,sourceNode=null) => {
     const ann=sourceNode?annotations.get(sourceNode.dataset.id):null;
-    const all=occurrenceData.terms[item.authority_id]||[];
-    const rows=[['類型',(ann?.markup_ids||item.markup_ids||[item.entity_type]).map(typeLabel).join('／')],['別名',(item.aliases||[]).map(a=>typeof a==='string'?a:a.text).filter(a=>a!==item.canonical_name).join('、')],['衝突說明',ann?.conflict_note||all.find(r=>r[7])?.[7]]].filter(([,v])=>v);
+    const pending=ann && occurrenceData.pending?.[ann.id];
+    const all=pending?[pending]:occurrenceData.terms[item.authority_id]||[];
+    const names=(item.aliases||[]).filter(a=>a.evidence?.identity_status!=='candidate').map(a=>typeof a==='string'?a:a.text);
+    const rows=[['類型',(ann?.markup_ids||item.markup_ids||[item.entity_type]).map(typeLabel).join('／')],['別名',names.filter(a=>a!==item.canonical_name).join('、')],['衝突說明',ann?.conflict_note||all.find(r=>r[7])?.[7]]].filter(([,v])=>v);
+    if(pending){
+      const candidates=[ann,...ann.term_alternatives].map(a=>{
+        const term=authorityById.get(a.term_id);
+        return `${term?.canonical_name||a.term_id}（${typeLabel(a.markup_id)}）`;
+      });
+      rows.splice(1,rows[1]?.[0]==='別名'?1:0,['候選實體',candidates.join('\n')]);
+    }
     const detail=document.getElementById('detail');detail.className='';detail.replaceChildren();
     const heading=document.createElement('div');heading.className='entity-heading';
-    const name=document.createElement('h4');name.className='detail-title';name.textContent=item.canonical_name||item.entity_text;heading.append(name,copyButton(item.canonical_name,`你要對文本中的下列實體做什麼處理？請說明:\n實體 ${item.authority_id}｜${item.canonical_name}｜${(item.markup_ids||[item.entity_type]).map(typeLabel).join('／')}`,true));detail.append(heading);
-    const summary=document.createElement('p');summary.className='entity-occurrence-summary';summary.textContent=`出現 ${all.length.toLocaleString()} 次｜段落 ${new Set(all.map(row=>row[1])).size.toLocaleString()} 段`;detail.append(summary);
+    const name=document.createElement('h4');name.className='detail-title';name.textContent=pending?ann.text:item.canonical_name||item.entity_text;heading.append(name);
+    if(!pending)heading.append(copyButton(item.canonical_name,`你要對文本中的下列實體做什麼處理？請說明:\n實體 ${item.authority_id}｜${item.canonical_name}｜${(item.markup_ids||[item.entity_type]).map(typeLabel).join('／')}`,true));detail.append(heading);
+    const summary=document.createElement('p');summary.className='entity-occurrence-summary';summary.textContent=pending?'待核對':`出現 ${all.length.toLocaleString()} 次｜段落 ${new Set(all.map(row=>row[1])).size.toLocaleString()} 段`;detail.append(summary);
     const table=document.createElement('table');table.className='detail-table';table.innerHTML=rows.map(([k,v])=>`<tr><th>${esc(k)}</th><td class="detail-text">${esc(v)}</td></tr>`).join('');detail.append(table);
+    if(pending)renderMap(null);
+    else renderSourcesAndMap(table,item,ann);
     const list=document.getElementById('occurrenceList');list.replaceChildren();
     const currentId=sourceNode?.dataset.id;
     const current=all.find(r=>r[0]===currentId);
@@ -199,20 +313,19 @@
         line.append(copyButton(`${chapterLabel(did)} 第${number}段 ${item.canonical_name}`,occurrenceContext(item,row,aid===currentId),true));
         if(aid===currentId){const badge=document.createElement('span');badge.className='kwic-current';badge.textContent='目前選取';line.append(badge);}li.append(line);
         const snippet=document.createElement('button');snippet.type='button';snippet.className='kwic-snippet';snippet.title=before+hit+after;snippet.append(document.createTextNode(before));
-        const mark=document.createElement('mark');mark.textContent=hit;mark.style.background=fills[item.entity_type]||'#e9edf3';snippet.append(mark,document.createTextNode(after));snippet.onclick=()=>goToOccurrence(item,row);li.append(snippet);list.append(li);
+        const mark=document.createElement('mark');mark.textContent=hit;mark.style.background=pending?'transparent':fills[item.entity_type]||'#e9edf3';snippet.append(mark,document.createTextNode(after));snippet.onclick=()=>goToOccurrence(item,row);li.append(snippet);list.append(li);
       }
       rendered=Math.min(rendered+80,ordered.length);
       if(rendered<ordered.length){const li=document.createElement('li');li.className='kwic-more-row';const b=document.createElement('button');b.type='button';b.className='kwic-more';b.textContent=`顯示更多（尚有 ${ordered.length-rendered} 段）`;b.onclick=appendBatch;li.append(b);list.append(li);}
     }
     appendBatch();
     if(!ordered.length){const li=document.createElement('li');li.className='empty';li.textContent='尚無此實體的標註。';list.append(li);}
-    document.getElementById('mapSection').hidden=true;
   };
   selectAuthority = (id,scroll=false,node=null) => {
     const item=authorityById.get(id);if(!item)return;selectedId=id;expandRightPanel();savePrefs();
     document.querySelectorAll('.entity-term').forEach(b=>b.classList.toggle('is-current',b.dataset.authorityId===id));
     document.querySelectorAll('.entity.is-selected').forEach(n=>n.classList.remove('is-selected'));
-    const matches=[...document.querySelectorAll(`.reader .entity[data-authority-id="${CSS.escape(id)}"]`)].filter(n=>!singleFile||!n.closest('article[id]').hidden);const active=node||matches[0]||null;if(active)active.classList.add('is-selected');
+    const matches=[...document.querySelectorAll(`.reader .entity[data-authority-id="${CSS.escape(id)}"]`)].filter(n=>n.dataset.identityStatus!=='ambiguous'&&(!singleFile||!n.closest('article[id]').hidden));const active=node||matches[0]||null;if(active)active.classList.add('is-selected');
     renderDetail(item,matches.length,active);
     if(scroll&&active)locateMention(active);
   };
